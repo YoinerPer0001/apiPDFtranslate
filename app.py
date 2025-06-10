@@ -1,10 +1,9 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import FileResponse
-import uuid, os, time
+import uuid, os, time, subprocess
 from pdf2docx import Converter
 from docx import Document
 from googletrans import Translator
-from docx2pdf import convert as convert_docx_to_pdf
 
 app = FastAPI()
 translator = Translator()
@@ -13,7 +12,7 @@ translator = Translator()
 TEMP_FOLDER = "temp"
 os.makedirs(TEMP_FOLDER, exist_ok=True)
 
-# Eliminar archivos de más de 15 mins (900 segundos)
+# Eliminar archivos de más de 15 minutos (900 segundos)
 def delete_old_files(folder, max_age_seconds=900):
     now = time.time()
     for filename in os.listdir(folder):
@@ -26,22 +25,36 @@ def delete_old_files(folder, max_age_seconds=900):
                 except Exception as e:
                     print(f"Error al borrar {path}: {e}")
 
+# Función para convertir DOCX a PDF con LibreOffice
+def convert_docx_to_pdf_linux(input_path, output_dir):
+    try:
+        subprocess.run([
+            "libreoffice",
+            "--headless",
+            "--convert-to", "pdf",
+            "--outdir", output_dir,
+            input_path
+        ], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error al convertir DOCX a PDF con LibreOffice: {e}")
+        raise
+
 @app.post("/translate-pdf/")
 async def translate_pdf(
     file: UploadFile = File(...),
     target_lang: str = Form(...)
 ):
-    #  Limpieza de archivos antiguos antes de procesar
+    # Limpiar archivos antiguos
     delete_old_files(TEMP_FOLDER)
 
-    # Generar rutas únicas dentro de la carpeta temporal
+    # Crear nombres de archivo únicos
     base_name = str(uuid.uuid4())
     input_pdf_path = os.path.join(TEMP_FOLDER, f"{base_name}.pdf")
     output_docx_path = input_pdf_path.replace(".pdf", ".docx")
     translated_docx_path = output_docx_path.replace(".docx", f"_translated.docx")
     translated_pdf_path = translated_docx_path.replace(".docx", ".pdf")
 
-    # Guardar el PDF subido
+    # Guardar el archivo subido
     with open(input_pdf_path, "wb") as f:
         f.write(await file.read())
 
@@ -50,7 +63,7 @@ async def translate_pdf(
     cv.convert(output_docx_path, start=0, end=None)
     cv.close()
 
-    # Traducir el contenido del DOCX
+    # Leer y traducir el DOCX
     doc = Document(output_docx_path)
     for paragraph in doc.paragraphs:
         if paragraph.text.strip():
@@ -59,13 +72,12 @@ async def translate_pdf(
                 paragraph.text = translated
             except Exception as e:
                 print("Error al traducir:", e)
-
     doc.save(translated_docx_path)
 
-    # Convertir DOCX traducido a PDF
-    convert_docx_to_pdf(translated_docx_path, translated_pdf_path)
+    # Convertir el DOCX traducido a PDF con LibreOffice
+    convert_docx_to_pdf_linux(translated_docx_path, TEMP_FOLDER)
 
-    # Borrar archivos intermedios (excepto el PDF final)
+    # Borrar archivos intermedios
     try:
         os.remove(input_pdf_path)
         os.remove(output_docx_path)
@@ -73,8 +85,5 @@ async def translate_pdf(
     except Exception as e:
         print(f"Error borrando archivos temporales: {e}")
 
+    # Enviar el PDF traducido
     return FileResponse(translated_pdf_path, filename="translated.pdf", media_type="application/pdf")
-
-
-
-
