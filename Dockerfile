@@ -1,22 +1,21 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# Instala LibreOffice y otras dependencias
-RUN apt-get update && \
-    apt-get install -y libreoffice && \
-    apt-get clean
+# Instala LibreOffice y otras herramientas necesarias
+RUN apt-get update && apt-get install -y libreoffice curl && apt-get clean
 
-# Crea el directorio de trabajo
+# Crea un directorio de trabajo
 WORKDIR /app
 
-# Copia los archivos del proyecto
-COPY . .
+# Copia archivos de la app
+COPY . /app
 
-# Instala dependencias de Python
+# Instala las dependencias de Python
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 
-# Expone el puerto para FastAPI (Render asigna su propio puerto, pero esto es necesario)
-EXPOSE 10000
+# Expone el puerto (FastAPI se ejecuta en 8000 por defecto)
+EXPOSE 8000
 
-# Comando para ejecutar la app
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "10000"]
+# Comando de inicio
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+
